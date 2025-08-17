@@ -29,8 +29,13 @@ const userSchema = new mongoose.Schema({
     role:{
         type:Number,
         default:0,
-    }
+    },
+    likedProducts: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Products"
+        }
+    ]
 }, {timestamps:true});
 
-// exporting to collection name and schema
 export default mongoose.model('users', userSchema);

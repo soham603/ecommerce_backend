@@ -5,6 +5,8 @@ import slugify from "slugify";
 import braintree from "braintree";
 import dotenv from "dotenv";
 import cloudinary from "../config/cloudinary.js";
+import userModel from "../models/userModel.js";
+import { paginate } from "../middlewares/pagination.js";
 
 dotenv.config();
 
@@ -14,35 +16,25 @@ var gateway = new braintree.BraintreeGateway({
   merchantId: process.env.BRAINTREE_MERCHANT_ID,
   publicKey: process.env.BRAINTREE_PUBLIC_KEY,
   privateKey: process.env.BRAINTREE_PRIVATE_KEY,
-})
+});
 
+// ------------------------- CREATE PRODUCT -------------------------
 export const createProductController = async (req, res) => {
   try {
     const { name, description, price, quantity, category, shipping, categoryName } = req.fields;
     const { image } = req.files || {};
 
-    // Validation
     switch (true) {
-      case !name:
-        return res.status(400).send({ error: "Name is Required" });
-      case !description:
-        return res.status(400).send({ error: "Description is Required" });
-      case !price:
-        return res.status(400).send({ error: "Price is Required" });
-      case !quantity:
-        return res.status(400).send({ error: "Quantity is Required" });
-      case !category:
-        return res.status(400).send({ error: "Category ID is Required" });
+      case !name: return res.status(400).send({ error: "Name is Required" });
+      case !description: return res.status(400).send({ error: "Description is Required" });
+      case !price: return res.status(400).send({ error: "Price is Required" });
+      case !quantity: return res.status(400).send({ error: "Quantity is Required" });
+      case !category: return res.status(400).send({ error: "Category ID is Required" });
     }
 
     let imageUrl = "";
     if (image) {
-      // if (image.size > 1000000) {
-      //   return res.status(400).send({ error: "Photo should be less than 1MB" });
-      // }
-      const result = await cloudinary.v2.uploader.upload(image.path, {
-        folder: "ecommerce_products",
-      });
+      const result = await cloudinary.v2.uploader.upload(image.path, { folder: "ecommerce_products" });
       imageUrl = result.secure_url;
     }
 
@@ -54,104 +46,114 @@ export const createProductController = async (req, res) => {
     });
 
     await products.save();
-    res.status(201).send({
-      success: true,
-      message: "Product Added Successfully",
-      products,
-    });
+    res.status(201).send({ success: true, message: "Product Added Successfully", products });
   } catch (error) {
     console.log(error);
-    res.status(500).send({
-      success: false,
-      message: "Error in creating product",
-      error,
-    });
+    res.status(500).send({ success: false, message: "Error in creating product", error });
   }
 };
 
-// Get All Products
+// ------------------------- GET ALL PRODUCTS -------------------------
 export const getProductsController = async (req, res) => {
   try {
-    const productsall = await ProductModel.find({})
-      .populate("category")
-      .limit(12)
-      .sort({ createdAt: -1 });
+    const user = req.user ? await userModel.findById(req.user._id) : null;
+
+    console.log(user);
+    
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+
+    const { items, total, currentPage, totalPages, hasMore } = await paginate(
+      ProductModel,
+      {},
+      page,
+      limit,
+      "category"
+    );
+
+    const updatedProducts = items.map(p => ({
+      ...p.toObject(),
+      isLiked: user ? user.likedProducts.includes(p._id) : false,
+    }));
+
     res.status(200).send({
       success: true,
-      message: "All Products Fetched Successfully",
-      countTotal: productsall.length,
-      productsall,
+      message: updatedProducts.length ? "Products fetched successfully" : "No more products",
+      total,
+      currentPage,
+      totalPages,
+      hasMore,
+      products: updatedProducts,
     });
   } catch (error) {
-    console.log(error);
-    res.status(500).send({
-      success: false,
-      message: "Error in getting products",
-      error,
-    });
+    console.error(error);
+    res.status(500).send({ success: false, message: "Error in getting products", error: error.message });
   }
 };
 
-// Get Single Product
+// ------------------------- GET SINGLE PRODUCT -------------------------
+// Updated getSingleProductsController in ProductController.js
 export const getSingleProductsController = async (req, res) => {
   try {
+    const user = req.user ? await userModel.findById(req.user._id) : null;
     const product = await ProductModel.findOne({ slug: req.params.slug }).populate("category");
-    res.status(200).send({
-      success: true,
-      message: "Single Product Fetched Successfully",
-      product,
+    
+    if (!product) {
+      return res.status(404).send({ 
+        success: false, 
+        message: "Product not found" 
+      });
+    }
+
+    // Add isLiked field based on user login status
+    const productWithLikeStatus = {
+      ...product.toObject(),
+      isLiked: user ? user.likedProducts.includes(product._id) : false,
+    };
+
+    res.status(200).send({ 
+      success: true, 
+      message: "Single Product Fetched Successfully", 
+      product: productWithLikeStatus 
     });
   } catch (error) {
     console.log(error);
-    res.status(500).send({
-      success: false,
-      message: "Error Getting Single Product",
-      error,
+    res.status(500).send({ 
+      success: false, 
+      message: "Error Getting Single Product", 
+      error 
     });
   }
 };
 
-// Delete Product
+// ------------------------- DELETE PRODUCT -------------------------
 export const deleteProductController = async (req, res) => {
   try {
     const product = await ProductModel.findById(req.params.pid);
     if (product.image) {
       const publicId = product.image.split("/").slice(-2).join("/").split(".")[0];
-      console.log(`Removing Item : ${publicId}`);
       await cloudinary.v2.uploader.destroy(`ecommerce_products/${publicId}`);
     }
     await ProductModel.findByIdAndDelete(req.params.pid);
-    res.status(200).send({
-      success: true,
-      message: "Product Deleted Successfully",
-    });
+    res.status(200).send({ success: true, message: "Product Deleted Successfully" });
   } catch (error) {
     console.log(error);
-    res.status(500).send({
-      success: false,
-      message: "Error Deleting Product",
-      error,
-    });
+    res.status(500).send({ success: false, message: "Error Deleting Product", error });
   }
 };
 
-// Update Product
+// ------------------------- UPDATE PRODUCT -------------------------
 export const updateProductController = async (req, res) => {
   try {
     const { name, description, price, quantity, category, shipping, categoryName } = req.fields;
     const { photo } = req.files || {};
 
     switch (true) {
-      case !name:
-        return res.status(400).send({ error: "Name is Required" });
-      case !description:
-        return res.status(400).send({ error: "Description is Required" });
-      case !price:
-        return res.status(400).send({ error: "Price is Required" });
-      case !quantity:
-        return res.status(400).send({ error: "Quantity is Required" });
-      case !category:
-        return res.status(400).send({ error: "Category ID is Required" });
+      case !name: return res.status(400).send({ error: "Name is Required" });
+      case !description: return res.status(400).send({ error: "Description is Required" });
+      case !price: return res.status(400).send({ error: "Price is Required" });
+      case !quantity: return res.status(400).send({ error: "Quantity is Required" });
+      case !category: return res.status(400).send({ error: "Category ID is Required" });
     }
 
     const product = await ProductModel.findById(req.params.pid);
@@ -159,12 +161,9 @@ export const updateProductController = async (req, res) => {
     if (photo) {
       if (product.image) {
         const publicId = product.image.split("/").slice(-2).join("/").split(".")[0];
-        console.log(`Removing Item : ${publicId}`);
         await cloudinary.v2.uploader.destroy(`ecommerce_products/${publicId}`);
       }
-      const result = await cloudinary.v2.uploader.upload(photo.path, {
-        folder: "ecommerce_products",
-      });
+      const result = await cloudinary.v2.uploader.upload(photo.path, { folder: "ecommerce_products" });
       product.image = result.secure_url;
     }
 
@@ -175,190 +174,177 @@ export const updateProductController = async (req, res) => {
     product.quantity = quantity;
     product.category = category;
     product.shipping = shipping;
-    product.categoryName = categoryName || (await CategoryModel.findById(category)).name;
+    product.categoryName = categoryName || (await Categorymodel.findById(category)).name;
 
     await product.save();
-    res.status(200).send({
-      success: true,
-      message: "Product Updated Successfully",
-      product,
-    });
+    res.status(200).send({ success: true, message: "Product Updated Successfully", product });
   } catch (error) {
     console.log(error);
-    res.status(500).send({
-      success: false,
-      message: "Error in Updating product",
-      error,
-    });
+    res.status(500).send({ success: false, message: "Error in Updating product", error });
   }
 };
 
-// Product Filter
+// ------------------------- PRODUCTS BY CATEGORY -------------------------
+export const productPerCategoryController = async (req, res) => {
+  try {
+    const user = req.user ? await userModel.findById(req.user._id) : null;
+    const category = await Categorymodel.findOne({ slug: req.params.slug });
+    if (!category) return res.status(404).send({ success: false, message: "Category not found" });
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+
+    const { items, total, currentPage, totalPages, hasMore } = await paginate(
+      ProductModel,
+      { category: category._id },
+      page,
+      limit,
+      "category"
+    );
+
+    const updatedProducts = items.map(p => ({ ...p.toObject(), isLiked: user ? user.likedProducts.includes(p._id) : false }));
+
+    res.status(200).send({
+      success: true,
+      message: updatedProducts.length ? "Products fetched successfully" : "No more products",
+      category,
+      total,
+      currentPage,
+      totalPages,
+      hasMore,
+      products: updatedProducts,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ success: false, message: "Error in getting products by category", error: error.message });
+  }
+};
+
+// ------------------------- SEARCH PRODUCTS -------------------------
+export const searchProductController = async (req,res) => {
+  try {
+    const user = req.user ? await userModel.findById(req.user._id) : null;
+    const {keyword} = req.params;
+
+    const results = await ProductModel.find({
+      $or: [
+        {name: {$regex: keyword, $options: "i"}},
+        {description: {$regex: keyword, $options: "i"}}
+      ]
+    }).populate("category");
+
+    const updatedResults = results.map(p => ({ ...p.toObject(), isLiked: user ? user.likedProducts.includes(p._id) : false }));
+
+    res.status(200).send({
+      success: true,
+      message: updatedResults.length ? "Products fetched successfully" : "No products found",
+      total: updatedResults.length,
+      products: updatedResults
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(400).send({ message: "Error in getting searched products", success: false, error });
+  }
+};
+
+// ------------------------- SIMILAR PRODUCTS -------------------------
+export const similarProductsController = async (req,res) => {
+  try {
+    const user = req.user ? await userModel.findById(req.user._id) : null;
+    const {pid,cid} = req.params;
+
+    const products = await ProductModel.find({
+      category: cid,
+      _id: {$ne: pid},
+    }).populate("category").limit(12);
+
+    const updatedProducts = products.map(p => ({ ...p.toObject(), isLiked: user ? user.likedProducts.includes(p._id) : false }));
+
+    res.status(200).send({
+      success: true,
+      message: updatedProducts.length ? "Products fetched successfully" : "No more products",
+      products: updatedProducts,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(400).send({ message: "Error in fetching similar products", success: false, error });
+  }
+};
+
+// ------------------------- FILTER PRODUCTS -------------------------
 export const productFiltersController = async(req,res) => {
   try {
+    const user = req.user ? await userModel.findById(req.user._id) : null;
     const {checked, radio} = req.query;
     let args = {};
     if (checked && checked.length > 0) args.category = checked;
     if (radio && radio.length) args.price = { $gte: radio[0], $lte: radio[1] };
-    const products = await ProductModel.find(args);
-    const lenghtfil = products.length;
-    console.log("Lenght of filtered search",products.length);
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 12;
+
+    const { items, total, currentPage, totalPages, hasMore } = await paginate(
+      ProductModel,
+      args,
+      page,
+      limit,
+      "category"
+    );
+
+    const updatedProducts = items.map(p => ({ ...p.toObject(), isLiked: user ? user.likedProducts.includes(p._id) : false }));
+
     res.status(200).send({
       success: true,
-      products,
-      lenghtfil
+      message: updatedProducts.length ? "Products fetched successfully" : "No more products",
+      total,
+      currentPage,
+      totalPages,
+      hasMore,
+      products: updatedProducts
     });
   } catch (error) {
     console.log(error);
-    res.status(400).send({
-      success: false,
-      message: "Error WHile Filtering Products",
-      error,
-    });
+    res.status(400).send({ success: false, message: "Error while filtering products", error });
   }
 };
 
-// product count
+// ------------------------- PRODUCT COUNT -------------------------
 export const productCountController = async (req,res) => {
   try {
-    const total = await ProductModel.find({}).estimatedDocumentCount();
-    res.status(200).send({
-      success: true,
-      total
-    });
+    const total = await ProductModel.countDocuments();
+    res.status(200).send({ success: true, total });
   } catch (error) {
     console.log(error);
-    res.status(400).send({
-      message: "Error in getting product count",
-      success: false,
-      error
-    });
-  }
-}
-
-// Products per page
-export const productListPageController = async (req,res) => {
-  try {
-    const perPage = 9;
-    const page = req.params.page ? req.params.page : 1;
-    const products = await ProductModel.find({}).select("-photo").skip((page - 1) * perPage).limit(perPage).sort({createdAt: -1});
-    res.status(200).send({
-      success: true,
-      products
-    });
-  } catch (error) {
-    console.log(error);
-    res.status(400).send({
-      message: "Error in getting per page products",
-      success: false,
-      error
-    });
+    res.status(400).send({ success: false, message: "Error in getting product count", error });
   }
 };
 
-// search product controller
-export const searchProductController = async (req,res) => {
-  try {
-    const {keyword} = req.params;
-    const results = await ProductModel.find({
-      $or: [
-        {name: {$regex: keyword, $options: "i"}},
-        {description: {$regex: keyword, $options: "i"}},
-      ],
-    }).select("-photo");
-    res.json(results);
-  } catch (error) {
-    console.log(error);
-    res.status(400).send({
-      message: "Error in getting Searched products",
-      success: false,
-      error
-    });
-  }
-};
-
-// similar products
-export const similarProductsController = async (req,res) => {
-  try {
-    const {pid,cid} = req.params;
-    const products = await ProductModel.find({
-      category: cid,
-      _id: {$ne:pid},
-    }).select("-photo").limit(4).populate("category");
-    res.status(200).send({
-      success: true,
-      message: "Success in similar products",
-      products,
-    });
-  } catch (error) {
-    console.log(error);
-    res.status(400).send({
-      message: "Error in getting Searched products",
-      success: false,
-      error
-    });
-  }
-};
-
-
-// Products as per category controller
-export const productpercategoryController = async (req,res) => {
-try{
-  const category = await Categorymodel.findOne({ slug: req.params.slug });
-  const products = await ProductModel.find({ category }).populate("category");
-  res.status(200).send({
-    success: true,
-    category,
-    products,
-  })
-} catch (error) {
-  console.log(error);
-  res.status(400).send({
-    message: "Error in getting Searched products",
-    success: false,
-    error
-  });
-  }
-};
-
-// payment api get token from braintree
+// ------------------------- PAYMENT -------------------------
 export const braintreeTokenController = async (req,res) => {
-try {
-  gateway.clientToken.generate({}, function(err,response){
-    if(err){
-      res.status(500).send(err);
-    } else {
-      res.send(response);
-    }
-  });
-} catch (error) {
-  console.log(error);
-}
+  try {
+    gateway.clientToken.generate({}, function(err,response){
+      if(err) res.status(500).send(err);
+      else res.send(response);
+    });
+  } catch (error) {
+    console.log(error);
+  }
 };
 
-// payment purpose
 export const braintreePaymentController = async (req, res) => {
   try {
     const { nonce, cart } = req.body;
-    let total = 0;
-    cart.map((i) => {
-      total += i.price;
-    });
-    let newTransaction = gateway.transaction.sale(
+    let total = cart.reduce((acc, item) => acc + item.price, 0);
+
+    gateway.transaction.sale(
       {
         amount: total,
         paymentMethodNonce: nonce,
-        options: {
-          submitForSettlement: true,
-        },
+        options: { submitForSettlement: true }
       },
-      function (error, result) {
+      async (error, result) => {
         if (result) {
-          const order = new OrderModel({
-            products: cart,
-            payment: result,
-            buyer: req.user._id,
-          }).save();
+          await new OrderModel({ products: cart, payment: result, buyer: req.user._id }).save();
           res.json({ ok: true });
         } else {
           res.status(500).send(error);

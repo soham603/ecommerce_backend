@@ -1,50 +1,73 @@
-import express  from "express";
-import { isAdmin, requireSignIn } from "../middlewares/authMiddleware.js";
-import formidable from 'express-formidable';
-import { createProductController, deleteProductController, getProductsController, getSingleProductsController, updateProductController, productFiltersController, productCountController, productListPageController, searchProductController, similarProductsController, productpercategoryController, braintreeTokenController, braintreePaymentController } from "../controllers/ProductController.js";
+import express from "express";
+import { isAdmin, requireSignIn, optionalAuth } from "../middlewares/authMiddleware.js";
+import formidable from "express-formidable";
+import {
+  createProductController,
+  deleteProductController,
+  getProductsController,
+  getSingleProductsController,
+  updateProductController,
+  productFiltersController,
+  productCountController,
+  searchProductController,
+  similarProductsController,
+  productPerCategoryController,
+  braintreeTokenController,
+  braintreePaymentController,
+} from "../controllers/ProductController.js";
 
 const router = express.Router();
 
-// routes
-router.post('/create-product', requireSignIn, isAdmin, formidable(), createProductController);
+// ------------------------- PRODUCT ROUTES -------------------------
 
-// Get Products
-router.get('/get-allproducts', getProductsController);
+// Create Product (Admin only)
+router.post(
+  "/create-product",
+  requireSignIn,
+  isAdmin,
+  formidable(),
+  createProductController
+);
 
-// Get Single Product
-router.get('/get-singleproduct/:slug', getSingleProductsController);
+// Get All Products (Optional auth - shows likes for logged in users)
+router.get("/get-allproducts", optionalAuth, getProductsController);
 
-// // Get Photos
-// router.get('/get-product-photo/:pid', productPhotoController);
+// Get Single Product (Optional auth)
+router.get("/get-singleproduct/:slug", optionalAuth, getSingleProductsController);
 
-// Get Single Product
-router.delete('/delete-product/:pid', deleteProductController);
+// Delete Product (Admin only)
+router.delete("/delete-product/:pid", requireSignIn, isAdmin, deleteProductController);
 
-// Update Product
-router.put('/update-product/:pid', requireSignIn, isAdmin,formidable(), updateProductController);
+// Update Product (Admin only)
+router.put(
+  "/update-product/:pid",
+  requireSignIn,
+  isAdmin,
+  formidable(),
+  updateProductController
+);
 
-// filter product
-router.get('/product-filters', productFiltersController);
+// Filter Products (Optional auth - shows likes for logged in users)
+router.get("/product-filters", optionalAuth, productFiltersController);
 
-// product count
-router.get('/product-count', productCountController);
+// Product Count (No auth needed)
+router.get("/product-count", productCountController);
 
-// product per page
-router.get("/product-list/:page", productListPageController);
+// Search Products (Optional auth - shows likes for logged in users)
+router.get("/search-product/:keyword", optionalAuth, searchProductController);
 
-// Search product
-router.get('/search-product/:keyword', searchProductController);
+// Similar/Related Products (Optional auth - shows likes for logged in users)
+router.get("/related-products/:pid/:cid", optionalAuth, similarProductsController);
 
-// similar product
-router.get('/related-products/:pid/:cid', similarProductsController);
+// Products per Category (Optional auth - shows likes for logged in users)
+router.get("/product-category/:slug", optionalAuth, productPerCategoryController);
 
-// category wise
-router.get('/product-category/:slug', productpercategoryController);
+// ------------------------- PAYMENT ROUTES -------------------------
 
-// payments routes
-router.get('/brtr/token', braintreeTokenController);
+// Get Braintree Token (No auth needed)
+router.get("/brtr/token", braintreeTokenController);
 
-// payments
-router.post('/brtr/payment', requireSignIn, braintreePaymentController);
+// Braintree Payment (Login required)
+router.post("/brtr/payment", requireSignIn, braintreePaymentController);
 
 export default router;
