@@ -14,6 +14,7 @@ import {
   productPerCategoryController,
   braintreeTokenController,
   braintreePaymentController,
+  createOrderController,
 } from "../controllers/ProductController.js";
 
 const router = express.Router();
@@ -69,5 +70,8 @@ router.get("/brtr/token", braintreeTokenController);
 
 // Braintree Payment (Login required)
 router.post("/brtr/payment", requireSignIn, braintreePaymentController);
+
+// Create Order Mobile App
+router.post("/create",requireSignIn, createOrderController);
 
 export default router;

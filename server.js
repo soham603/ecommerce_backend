@@ -10,6 +10,7 @@ import formidable from "express-formidable";
 import carouselRoutes from "./routes/carouselRoute.js";
 import cors from "cors";
 import LikeRoutes from "./routes/likeRoute.js";
+import BankOfferRoutes from "./routes/bankOfferRoute.js";
 
 // configure env
 dotenv.config();
@@ -31,6 +32,7 @@ app.use("/api/v1/category", CategoryRoutes);
 app.use("/api/v1/products", ProductRoutes);
 app.use("/api/v1/carousel", carouselRoutes);
 app.use("/api/v1/like", LikeRoutes);
+app.use("/api/v1/bankOffer", BankOfferRoutes);
 
 // default route
 app.get("/", (req, res) => {

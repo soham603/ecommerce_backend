@@ -383,3 +383,48 @@ export const braintreePaymentController = async (req, res) => {
     console.log(error);
   }
 };
+
+
+// Create Order Mobile App
+export const createOrderController = async (req, res) => {
+  try {
+    const { buyer, products, payment } = req.body;
+
+    if (!buyer || !products || products.length === 0) {
+      return res.status(400).json({ success: false, message: "Buyer and products are required" });
+    }
+
+    // calculate total
+    const totalAmount = products.reduce(
+      (acc, item) => acc + item.price * item.quantity,
+      0
+    );
+
+    // create order
+    const order = new OrderModel({
+      buyer,
+      products,
+      totalAmount,
+      payment: payment || {
+        id: "txn_" + Date.now(),
+        status: "Success",
+        mode: "DummySDK",
+      },
+    });
+
+    await order.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Order created successfully",
+      order,
+    });
+  } catch (error) {
+    console.error("Create order error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error creating order",
+      error,
+    });
+  }
+};
