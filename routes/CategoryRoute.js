@@ -1,11 +1,12 @@
 import express from "express";
 import { createCategoryController, deleteCategoryController, getallCategoriesController, getsingleCategoriesController, updateCategoryController } from "../controllers/CategoryController.js";
 import { isAdmin, requireSignIn } from "../middlewares/authMiddleware.js";
+import formidable from "express-formidable";
 
 const router = express.Router();
 
 // Create New Category 
-router.post('/create-category', requireSignIn, isAdmin, createCategoryController);
+router.post('/create-category', requireSignIn, isAdmin, formidable(), createCategoryController);
 
 // Update Category
 router.put('/update-category/:id', requireSignIn, isAdmin, updateCategoryController);
