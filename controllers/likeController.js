@@ -33,17 +33,22 @@ export const toggleLikeProduct = async (req, res) => {
 };
 
 export const getLikedProducts = async (req, res) => {
-    try {
-      const userId = req.user._id;
-      
-      const user = await User.findById(userId).populate({
-        path: "likedProducts",      
-        populate: { path: "category" } 
-      });
-      
-      res.json({ likedProducts: user.likedProducts });
-    } catch (err) {
-      res.status(500).json({ message: "Error fetching liked products", error: err.message });
-    }
-  };
+  try {
+    const userId = req.user._id;
+
+    const user = await User.findById(userId).populate({
+      path: "likedProducts",
+      populate: { path: "category" }
+    });
+
+    const likedProducts = user.likedProducts.map(product => ({
+      ...product.toObject(),
+      isLiked: true
+    }));
+
+    res.json({ likedProducts });
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching liked products", error: err.message });
+  }
+};
   
